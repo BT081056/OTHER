@@ -1,41 +1,63 @@
+'''
+https://www.cnblogs.com/wj-1314/p/14049195.html
+'''
+
 import pandas as pd
 import numpy as np
 from sklearn.neighbors import LocalOutlierFactor as LOF
 import time
- 
-data = pd.read_csv('data.csv')
-print(data.columns)
-data_cut = data.drop(columns = ['Unnamed: 0', 'datetime'])
-data_list = []
-for d in range(len(data_cut)):
-    onedata = data_cut.loc[d].values
-    data_list.append(onedata)
+import random
+Col_len = 5
+x1 = []
+for c in range(20):
+    x_ = []
+    for d in range(Col_len):
+        if c == 55:
+            value1 =  random.randint(7,9)
+        else:
+            value1 = random.randint(0,5)
+        x_.append(value1)
+    x1.append(x_)
 
 
-X = [[-1.1,5], [0.2,4], [100.1,3], [0.3,2]]
-X = data_list
-clf = LOF(n_neighbors=2)
-t1 = time.time()
-res = clf.fit_predict(X)
-print(time.time() - t1)
-print(clf.negative_outlier_factor_)
- 
+x2 = []
+for c in range(3):
+    x_ = []
+    for d in range(Col_len):
+        value1 =  random.randint(0,5)
+        x_.append(value1)
+    x2.append(x_)
 
-for i in res:
-    if i != 1:
-        break
+#x2 = [[1, 1, 2, 0, 0, 2, 2, 2, 0, 2],
+# [0, 0, 2, 2, 2, 2, 3, 0, 2, 0],
+# [0, 3, 1, 1, 2, 2, 1, 2, 0, 1]]
 
-'''
-https://www.cnblogs.com/wj-1314/p/14049195.html
-如果 X = [[-1.1], [0.2], [100.1], [0.3]]
-[ 1  1 -1  1]
-[ -0.98214286  -1.03703704 -72.64219576  -0.98214286]
- 
-如果 X = [[-1.1], [0.2], [0.1], [0.3]]
-[-1  1  1  1]
-[-7.29166666 -1.33333333 -0.875      -0.875     ]
- 
-如果 X = [[0.15], [0.2], [0.1], [0.3]]
-[ 1  1  1 -1]
-[-1.33333333 -0.875      -0.875      -1.45833333]
-'''
+x3 = []
+for c in range(3):
+    x_ = []
+    for d in range(Col_len):
+        value1 =  random.randint(5,7)
+        x_.append(value1)
+    x3.append(x_)
+#
+#x3 = [[8, 6, 3, 5, 2, 5, 4, 8, 2, 5],
+# [4, 8, 5, 8, 2, 8, 7, 4, 6, 6],
+# [2, 2, 4, 7, 3, 9, 3, 9, 8, 7]]
+
+
+np.ones(x1.shape[0], dtype=int)
+X_train = x1
+X_test = x3
+
+clf = LOF(n_neighbors=2, contamination='auto', novelty=True)
+clf.fit(X_train)
+Train_Pred = clf.predict(X_train)
+
+limit_score = max(clf.score_samples(X_train)[Train_Pred == -1])
+
+
+
+y_pred_test = clf.score_samples(X_test)
+y_score_test = clf.predict(X_test)
+
+print(y_pred_test,y_score_test)
