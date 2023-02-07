@@ -644,8 +644,8 @@
                 }, 
                 tooltip: {
                     formatter: function () {
-                        return '<b>' + getPointCategoryName(this.point, 'x') + '</b> sold <br><b>' +
-                            this.point.value + '</b> items on <br><b>' + getPointCategoryName(this.point, 'y') + '</b>';
+                        return '<b>' + this.point.value + '</b><br> X: <b>' + getPointCategoryName(this.point, 'x') + 
+                            '</b> , Y: <b>' + getPointCategoryName(this.point, 'y') + '</b>';
                     }
                 },
                 // heatmap 資料源要ARRAY格式 不能字串
