@@ -1,0 +1,679 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head id="Head1" runat="server">
+    <title>IR_HOT_MAP</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <meta http-equiv="X-UA-Compatible" content="IE=8">
+    <meta name="viewport" content="width=device-width, initial-scale=1" /> 
+    <!--<meta http-equiv="refresh" content="3" />頁面3秒更新一次-->
+    <script src="{{url_for('static',filename='jquery.js')}}"></script> 
+    <!--<script type="text/javascript">      function pageLoad() {      }    </script>-->
+    <script src="{{url_for('static',filename='highcharts.js')}}"></script>
+    <script src="{{url_for('static',filename='heatmap.js')}}"></script>
+    <script src="{{url_for('static',filename='exporting.js')}}"></script>
+    <script src="{{url_for('static',filename='export-data.js')}}"></script>
+    <script src="{{url_for('static',filename='accessibility.js')}}"></script>
+     
+    <script src="{{url_for('static',filename='Chart.min.js')}}"></script> <!--此引用有新建成檔案Chart.js, 路徑待改 XX/Chart.js-->
+    
+</head>
+
+<style type="text/css">
+    .highcharts-figure, .highcharts-data-table table
+    {
+        min-width: 360px;
+        max-width: 800px;
+        margin: 1em auto;
+    }
+
+    .highcharts-data-table table
+    {
+        font-family: Verdana, sans-serif;
+        border-collapse: collapse;
+        border: 1px solid #ebebeb;
+        margin: 10px auto;
+        text-align: center;
+        width: 100%;
+        max-width: 500px;
+    }
+
+    .highcharts-data-table caption
+    {
+        padding: 1em 0;
+        font-size: 1.2em;
+        color: #555;
+    }
+
+    .highcharts-data-table th
+    {
+        font-weight: 600;
+        padding: 0.5em;
+    }
+
+    .highcharts-data-table td, .highcharts-data-table th, .highcharts-data-table caption
+    {
+        padding: 0.5em;
+    }
+
+    .highcharts-data-table thead tr, .highcharts-data-table tr:nth-child(even)
+    {
+        background: #f8f8f8;
+    }
+
+    .highcharts-data-table tr:hover
+    {
+        background: #f1f7ff;
+    }  
+</style>
+
+<body>    
+    <div id="main">
+        <div style="width:500px; margin:0 auto; text-align: center;">
+            <h1>IR HOT MAP</h1>
+            <label for="machine_select" class="form-label">請選擇欲查看的Sensor</label>
+            <p><select id="machine_select" class="form-select" style="width: 250px;"></select></p>
+            <button id="check_choose" type="button" onclick="btn_click()" style="width: 200px;">
+		<label id="check_choose_label">確認</label><!--<i class="fa fa-spinner fa-spin"></i>&nbsp Loading...-->
+	    </button>
+            <br/><br/><br/>
+            <form>
+                <label for="get_name" class="form-label">命名或修改的Sensor名稱</label>
+                <p><input type="text" id="get_name" style="width: 200px;" required></p>
+                <button type="submit" onclick="name_click()" style="width: 200px;">確認</button>
+            </form>
+        </div>
+    </div>
+    
+    <div id="history" style="display: none;">
+        <form id="form1" runat="server">        
+        <div style="width:500px; margin:0 auto; text-align: right;">
+            <button type="button" onclick="reload_click()" width="50px">重新整理</button>
+            <button type="submit" onclick="back_click()" width="50px">上一頁</button>
+        </div>        
+	
+	<!--class="highcharts-figure">-->
+	<!--熱力圖-->
+	<figure>
+	    <table style="margin:0 auto;">
+		<tr>
+		    <td>
+			<div id="container_0"></div>
+		    </td>
+		    <td>
+			<div id="container_1"></div>
+		    </td>
+		    <td>
+			<div id="container_2"></div>
+		    </td>
+		</tr>
+		<tr>
+		    <td>
+			<div id="container_3"></div>
+		    </td>
+		    <td>
+			<div id="container_4"></div>
+		    </td>
+		    <td>
+			<div id="container_5"></div>
+		    </td>
+		</tr>
+	    </table>
+	</figure>
+	
+        <div>
+            <asp:ScriptManager ID="ScriptManager1" runat="server" />  
+        </div>
+        
+        <div style="width:500px; margin:0 auto;">
+        <form>
+            <div style="float:left;">
+                上限值：<input id="max_upper_limit" type="number" style="width: 80px;" required /> <!--min="1"-->
+                <button id="max_btn" type="button" onclick="max_upper()">確認</button>
+            </div>
+            <div style="float:right;">
+                【<label id="max_red" style="font-size: 35px; vertical-align: sub;">●</label>】
+            </div>
+	        <canvas id="MaxChart"></canvas>
+	    </form>
+	    
+        <form>
+            <div style="float:left;">
+            上限值：<input id="min_upper_limit" type="number" style="width: 80px;" required />
+            <button id="min_btn" type="button" onclick="min_upper()" runat="server">確認</button>
+            </div>
+            <div style="float:right;">
+                【<label id="min_red" runat="server" style="font-size: 35px; vertical-align: sub;">●</label>】
+            </div>
+	        <canvas id="MinChart"></canvas>	    
+	    </form>
+	    
+        <form>
+            <div style="float:left;">
+            上限值：<input id="avg_upper_limit" type="number" style="width: 80px;" required />
+            <button id="avg_btn" type="button" onclick="avg_upper()" runat="server">確認</button>
+            </div>
+            <div style="float:right;">
+                【<label id="avg_red" runat="server" style="font-size: 35px; vertical-align: sub;">●</label>】
+            </div>
+	        <canvas id="AvgChart"></canvas>
+	    </form>
+        </div>
+
+
+        </form>
+    </div>        
+ 
+    <script type="text/javascript">  //http://192.168.1.22:5000/ or 192.168.1.50:5000       
+        //最先執行       
+	dropdown_webapi();   
+
+        /*********************************按鈕*********************************/   
+        var data_page2; var mac_page2; var btn_load;	
+        function btn_click() { //確認按鈕     
+	    //('#check_choose_label').html('<i class="fa fa-spinner fa-spin"></i>&nbsp Loading...');
+            mac_page2 = document.getElementById("machine_select").value.substr(0,17);
+            data_page2 = JSON.stringify({
+                'mac': mac_page2
+            }) 
+            historyData_webapi(data_page2);        
+        }
+                
+        function reload_click() { //重新整理按鈕            
+            historyData_webapi(data_page2); 
+        }       
+         
+        function name_click() { //命名按鈕
+            var mac = document.getElementById("machine_select").value.substr(0,17);
+            var rename = document.getElementById("get_name").value;
+            var data = JSON.stringify({
+                'mac': mac,
+                'name': rename
+            })
+            
+            $.ajax({
+                url: 'Mac2Name_Save', //命名或重新命名Mac其名稱
+                type: 'POST',
+                data: data,
+                dataType: 'JSON',
+                success: function (res) {
+                    console.log(res);
+                },
+                error: function (res) {
+                    console.log(res);
+                }
+            })
+        }  
+	
+        function back_click() { //上一頁按鈕
+            var main=document.getElementById("main");
+            main.setAttribute("style","display: block;");
+            var history=document.getElementById("history");
+            history.setAttribute("style","display: none;");
+            dropdown_webapi();
+        }   
+        
+        /*********************************Web API function*********************************/
+        function dropdown_webapi() { //主頁下拉式選單
+            $.ajax({
+                url: 'Mac2Name', //取得Mac與其名稱-->下拉式選單
+                type: 'GET',
+                cache: false, //避開舊資料,每次都將request送至Server執行
+                async: false, //此尚未執行完成,無法執行下一個＝不同步
+                dataType: 'JSON',
+                success: function (res) {
+		    var options = res;			    
+                    tmpHtml = ""; //<option>無選擇任何Sensor</option>
+		    
+                    for (let i = 0; i < options.length; i++) {
+                        if (i==0) {
+                            if(options[i]['name']==null)
+                                tmpHtml += "<option selected>" + options[i]['mac'] +"</option>";
+                            else
+                                tmpHtml += "<option selected>" + options[i]['mac'] + "(" + options[i]['name'] +")</option>";
+                        } else {
+                            if(options[i]['name']==null)
+                                tmpHtml += "<option>" + options[i]['mac'] +"</option>";
+                            else
+                                tmpHtml += "<option>" + options[i]['mac'] + "(" + options[i]['name'] +")</option>";
+                        }
+                    }
+                    $("#machine_select").html(tmpHtml);
+                },
+                error: function () {
+                    alert('Sensor名稱取得失敗');
+                }
+            })    
+        } 
+        
+        function historyData_webapi(data_page2) { //歷史頁面資料
+            $.ajax({
+                url: 'GetMacDataplus', //拋Mac取得其資料,呈現於歷史頁面
+                type: 'POST',
+                data: data_page2,
+                cache: false,
+		async: false,
+                dataType: 'JSON',
+                timeout: 10000,
+                success: function (res) {             
+                    var main=document.getElementById("main");
+                    main.setAttribute("style","display: none;"); //主頁面 隱藏
+                    var history=document.getElementById("history");
+                    history.setAttribute("style","display: block;"); //歷史頁面 顯示
+            
+                    var HotMap_data = res['HotMap']; //undefined
+                    var dt = res['dt'];
+                    var Max_data = res['Max'];
+                    var Avg_data = res['Avg'];
+                    var Min_data = res['Min'];
+                    var SpcMax_value = parseFloat(res['SpcMax']);
+                    var SpcAvg_value = parseFloat(res['SpcAvg']);
+                    var SpcMin_value = parseFloat(res['SpcMin']);
+                    
+                    update_area(Max_data, Avg_data, Min_data, SpcMax_value, SpcAvg_value, SpcMin_value, dt); //呼叫3chart
+                    HotMapMain(HotMap_data); //呼叫熱力圖
+
+                },
+                error: function () {
+                    alert('資料取得失敗');
+                }
+            }) 
+        }  
+        
+        function spcSave_webapi(data){ //上限值                   
+            $.ajax({
+                url: 'Spc_Save', //儲存上限值
+                type: 'POST',
+                data: data,
+                dataType: 'JSON',
+                success: function (res) {
+                    console.log(res);
+                },
+                error: function (res) {
+                    console.log(res);
+                }
+            })
+        }
+    
+        /*********************************折線圖*********************************/
+	//下方變數都為了讓上限值按下確認按鈕後可取得（全域變數）
+	var Max_data_G;var Avg_data_G;var Min_data_G;	
+	var max_bgcolor=[];var avg_bgcolor=[];var min_bgcolor=[];
+	var MaxChart;var AvgChart;var MinChart;
+        function update_area(Max_data, Avg_data, Min_data, SpcMax_value, SpcAvg_value, SpcMin_value, dt){ //3秒更新funcion內容            
+	    //使上限值按下確認按鈕後可取得
+	    Max_data_G=Max_data;
+	    Avg_data_G=Avg_data;
+	    Min_data_G=Min_data;
+	    
+	    //每次進來須先清零,後面才可push
+	    max_bgcolor=[];
+	    avg_bgcolor=[];
+	    min_bgcolor=[];
+	    
+	    //把記錄於DB的上限值呈現於input框中
+	    document.getElementById('max_upper_limit').value=SpcMax_value;
+	    document.getElementById('avg_upper_limit').value=SpcAvg_value;
+	    document.getElementById('min_upper_limit').value=SpcMin_value;
+	    
+            //取DB中記錄的個別上限值來判斷	    
+	    var max_red=document.getElementById('max_red');
+	    max_red.setAttribute("style","font-size: 35px; vertical-align: sub;");	
+	    var min_red=document.getElementById('min_red');
+	    min_red.setAttribute("style","font-size: 35px; vertical-align: sub;");
+	    var avg_red=document.getElementById('avg_red');
+	    avg_red.setAttribute("style","font-size: 35px; vertical-align: sub;");
+            for (i = 0; i < Max_data.length; i++) {
+                if (Max_data[i] > SpcMax_value) { //拿get到的值來比
+                    max_bgcolor.push('rgba(255, 0, 0, 1)');
+                    max_red.setAttribute("style","color: red; font-size: 35px; vertical-align: sub;");		    
+                }
+                else{
+                    max_bgcolor.push('rgba(0, 0, 0, 1)');
+                }
+            }
+            for (i = 0; i < Min_data.length; i++) {
+                if (Min_data[i] > SpcMin_value) { //拿get到的值來比
+                    min_bgcolor.push('rgba(255, 0, 0, 1)');
+                    min_red.setAttribute("style","color: red; font-size: 35px; vertical-align: sub;");
+                }
+                else{
+                    min_bgcolor.push('rgba(0, 0, 0, 1)');
+                }
+            }
+            for (i = 0; i < Avg_data.length; i++) {
+                if (Avg_data[i] > SpcAvg_value) { //拿get到的值來比
+                    avg_bgcolor.push('rgba(255, 0, 0, 1)');
+                    avg_red.setAttribute("style","color: red; font-size: 35px; vertical-align: sub;");
+                }
+                else{
+                    avg_bgcolor.push('rgba(0, 0, 0, 1)');
+                }
+            }
+	    
+            //Max Chart
+	    var ctx = document.getElementById('MaxChart'); 
+            MaxChart = new Chart(ctx, { 
+                type: 'line', 
+                data: {
+                    labels: dt, //time
+                    datasets: [{
+                        label: '溫度',
+                        data: Max_data, //data_max
+                        fill: false,
+                        pointBackgroundColor: max_bgcolor,
+                        borderColor: 'rgba(0, 0, 0, 0.8)',
+                    },] 
+                },
+                options: {
+                    title:{ //標題(title)
+                        display: true, 
+                        text: '最大值',
+                    },
+                    legend: { //圖例
+                        display: false,
+                        position: 'right',
+                    },
+                    scales: { 
+                        xAxes: [{ //X軸title
+                            scaleLabel: { 
+                                display: true, 
+                                labelString: '時間'  
+                            },
+                        }],
+                        yAxes: [{ //Y軸title
+                            scaleLabel: { 
+                                display: true, 
+                                labelString: '溫度(°C)'
+                            },
+                        }]
+                    },  
+                }  
+            });
+                    
+            //Min Chart
+	    var ctx = document.getElementById('MinChart'); 
+            MinChart = new Chart(ctx, { 
+                type: 'line', 
+                data: {
+                    labels: dt, //time
+                    datasets: [{
+                        label: '溫度',
+                        data: Min_data, //data_min
+                        fill: false,
+                        pointBackgroundColor: min_bgcolor,
+                        borderColor: 'rgba(0, 0, 0, 0.8)',
+                    },] 
+                },
+                options: {
+                    title:{ //標題(title)
+                        display: true, 
+                        text: '最小值',
+                    },
+                    legend: { //圖例
+                        display: false,
+                        position: 'right',
+                    },
+                    scales: { 
+                        xAxes: [{ //X軸title
+                            scaleLabel: { 
+                                display: true, 
+                                labelString: '時間'  
+                            },
+                        }],
+                        yAxes: [{ //Y軸title
+                            scaleLabel: { 
+                                display: true, 
+                                labelString: '溫度(°C)'
+                            },
+                        }]
+                    },  
+                }  
+            });            
+	    
+	    //Avg Chart
+	    var ctx = document.getElementById('AvgChart'); 
+            AvgChart = new Chart(ctx, { 
+                type: 'line', 
+                data: {
+                    labels: dt, //time
+                    datasets: [{
+                        label: '溫度',
+                        data: Avg_data, //data_avg
+                        fill: false,
+                        pointBackgroundColor: avg_bgcolor,
+                        borderColor: 'rgba(0, 0, 0,0.8)',
+                    },] 
+                },
+                options: {
+                    title:{ //標題(title)
+                        display: true, 
+                        text: '平均值',
+                    },
+                    legend: { //圖例
+                        display: false,
+                        position: 'right',
+                    },
+                    scales: { 
+                        xAxes: [{ //X軸title
+                            scaleLabel: { 
+                                display: true, 
+                                labelString: '時間'  
+                            },
+                        }],
+                        yAxes: [{ //Y軸title
+                            scaleLabel: { 
+                                display: true, 
+                                labelString: '溫度(°C)'  
+                            },
+                        }]
+                    },  
+                }  
+            });		
+            //setInterval("update_area()", 10000); //10秒更新 更新幾次後會變得很當...
+        }
+	
+	//Max上限值判斷function
+	function max_upper(){
+	    var max_limit=document.getElementById('max_upper_limit').value;
+	    var max_red=document.getElementById('max_red');
+	    max_red.setAttribute("style","font-size: 35px; vertical-align: sub;");
+	    if(max_limit!=undefined && max_limit!=null && max_limit!=''){
+		for (i = 0; i < Max_data_G.length; i++) {
+		    if (Max_data_G[i] > max_limit) {
+			max_bgcolor[i]='rgba(255, 0, 0, 1)';
+			max_red.setAttribute("style","color: red; font-size: 35px; vertical-align: sub;");
+		    }
+		    else{
+			max_bgcolor[i]='rgba(0, 0, 0, 1)';
+		    }
+		}
+		var data = JSON.stringify({
+		    'mac': mac_page2,
+		    'parameter': 'Max',
+		    'value': max_limit
+		})  
+		spcSave_webapi(data);  
+	    }           
+	    MaxChart.update();
+	}
+	    
+	//Min上限值判斷function	    
+	function min_upper(){
+	    var min_limit=document.getElementById('min_upper_limit').value;
+	    var min_red=document.getElementById('min_red');
+	    if(min_limit!=undefined && min_limit!=null && min_limit!=''){
+		for (i = 0; i < Min_data_G.length; i++) {
+		    if (Min_data_G[i] > min_limit) {
+			min_bgcolor[i]='rgba(255, 0, 0, 1)';
+			min_red.setAttribute("style","color: red; font-size: 35px; vertical-align: sub;");
+		    }
+		    else{
+			min_bgcolor[i]='rgba(0, 0, 0, 1)';
+			min_red.setAttribute("style","color: black; font-size: 35px; vertical-align: sub;");
+		    }
+		}
+		var data = JSON.stringify({
+		    'mac': mac_page2,
+		    'parameter': 'Min',
+		    'value': min_limit
+		})
+		spcSave_webapi(data); 
+	    }              
+	    MinChart.update();
+	}
+            
+	//Avg上限值判斷function	    	    
+	function avg_upper(){
+	//var avg_upper = function () {
+	    var avg_limit=document.getElementById('avg_upper_limit').value;
+	    var avg_red=document.getElementById('avg_red');
+	    if(avg_limit!=undefined && avg_limit!=null && avg_limit!=''){
+		for (i = 0; i < Avg_data_G.length; i++) {
+		    if (Avg_data_G[i] > avg_limit) {
+                        avg_bgcolor[i]='rgba(255, 0, 0, 1)';
+			avg_red.setAttribute("style","color: red; font-size: 35px; vertical-align: sub;");
+		    }
+		    else{
+			avg_bgcolor[i]='rgba(0, 0, 0, 1)';
+			avg_red.setAttribute("style","color: black; font-size: 35px; vertical-align: sub;");
+		    }
+		}
+		var data = JSON.stringify({
+		    'mac': mac_page2,
+		    'parameter': 'Avg',
+		    'value': avg_limit
+		}) 
+		spcSave_webapi(data); 
+	    }         
+	    AvgChart.update();
+	}  	            
+            
+            /*********************************熱力圖*********************************/
+	    function getPointCategoryName(point, dimension) {
+		var series = point.series,
+		    isY = dimension === 'y',
+		    axis = series[isY ? 'yAxis' : 'xAxis'];
+		return axis.categories[point[isY ? 'y' : 'x']];
+	    }
+	            
+	    function HotMapMain(HotMap_data){		    
+		for (var i = 0; i < HotMap_data.length; i++ ) {
+		    var chart_id = 'container_' + i;
+		    HotMap_data[i]['sensor_id'];
+		    var sensor_id = HotMap_data[i]['sensor_no'];
+		    HotMap_data[i]['sensor_type'];
+		    var sensor_value = JSON.stringify(HotMap_data[i]['sensor_value']);
+		    sensor_value = sensor_value.replaceAll("[[[","[");
+		    sensor_value = sensor_value.replaceAll("]]]","]");
+		    sensor_value = sensor_value.replaceAll("[[","[");
+		    sensor_value = sensor_value.replaceAll("]]","]");
+		    sensor_value = '[' + sensor_value + ']'
+		    var input_time = HotMap_data[i]['input_time'];
+		    mytouch(createHeatMap(chart_id, sensor_id, sensor_value, input_time),5000);
+		}
+	    }
+
+            function mytouch() {
+		myparam = setTimeout(myevent, 5000);
+	    }           
+
+            function createHeatMap(chart_id, sensor_id, sensor_value, input_time){ 		
+		var X=[]; var Y=[];
+		for(x=0;x<48;x++){
+		    X.push(x.toString());
+		}
+		for(y=0;y<64;y++){
+		    Y.push(y.toString());
+		}                   
+            
+                Highcharts.chart(chart_id, {
+                    chart: {
+                    type: 'heatmap',
+                    width: 384,
+                    height: 512,
+                    plotBorderWidth: 1
+                },
+                title: {
+		    text:  'sernsorID : ' + sensor_id + ' <br>   寫入時間 : ' +  input_time
+                },
+                plotOptions: {
+                    heatmap: {
+                        turboThreshold: 12000,   
+                    }
+                }, 
+                xAxis: {
+                    categories: X,
+                    visible: false
+                }, 
+                yAxis: {
+                    categories: Y,
+                    title: null,
+                    reversed: true,
+                    visible: false
+                }, 
+                accessibility: {
+                    point: {
+                        descriptionFormatter: function (point) {
+                            var ix = point.index + 1,
+                                xName = getPointCategoryName(point, 'x'),
+                                yName = getPointCategoryName(point, 'y'),
+                                val = point.value;
+                            return ix + '. ' + xName + ' sales ' + yName + ', ' + val + '.';
+                        }
+                    }
+                }, 
+                colorAxis:{    
+                    min: 25,
+                    accessibility: {
+                        enabled : true,
+                    },
+                    stops: [
+                        [0, '#0d33ff'],
+                        [0.5, '#99ff4d'],
+                        [1, '#ff350d']
+                    ],
+                    className: 'heatmaplegend',
+                    visible: true,
+                },
+                legend: {
+                    align: 'right',
+                    layout: 'vertical',
+                    margin: 25,
+                    verticalAlign: 'top',
+                    y: 0.2,
+                    symbolHeight: 320
+                }, 
+                tooltip: {
+                    formatter: function () {
+                        return '<b>' + getPointCategoryName(this.point, 'x') + '</b> sold <br><b>' +
+                            this.point.value + '</b> items on <br><b>' + getPointCategoryName(this.point, 'y') + '</b>';
+                    }
+                },
+                // heatmap 資料源要ARRAY格式 不能字串
+                series: [{
+                    name: 'templuate',
+                    borderWidth: 1,
+                    data:  JSON.parse(sensor_value),
+                }],
+                responsive: {
+                    rules: [{
+                        condition: {
+                            maxWidth: 500
+                        },
+                        chartOptions: {
+                            yAxis: {
+                                labels: {
+                                    formatter: function () {
+                                        return this.value.charAt(0);
+                                    }
+                                }
+                            }
+                        }
+                    }]
+                }        
+            });
+            //setInterval("createHeatMap(chart_id, sensor_id, sensor_value, input_time)", 3000); //3秒更新 
+        } 
+    </script>
+
+</body>
+</html>
