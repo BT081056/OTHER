@@ -3,18 +3,18 @@
 import sys
 import os
 sys.path.append(os.getcwd())
-
+import warnings
+warnings.filterwarnings("ignore")
 
 from flask import Flask, render_template ,request, jsonify
 
-import matplotlib.pyplot as plt
+
 import numpy as np
-import base64
-from io import BytesIO
-import json,requests
+import json
 from Lib import SQLite
 from Lib import ReadDB
-
+from Lib import PollingDevice_Lib
+import multiprocessing
 
 app = Flask(__name__)
 
@@ -100,12 +100,27 @@ def GetMacData_a():
 
 @app.route('/sensor_data2',methods=['GET','POST']) #IP:5000/ABC 路由API
 def sensor_data():
+    print('get')
     data=json.loads(request.get_data(as_text=True)) #<<<收到資料
     SQLite.InsertDataTabel('sensor_data2',data)### save to db
+#    json_string = SQLiteLogicalInstruction.SENSOR_Top2('sensor_data2')
+    sensor = data['sensor_value'].split(',')
+    mac = data['sensor_no']
+    Eth_init()
+    Arraydata = np.reshape(sensor,(24,32))
+    print(f'{"INFO":*^30}')
+    wait2Polling = PollingDevice_Lib.checkPolling(mac,Arraydata)
+    
+#    PollingDevice_Lib.sendPolling(eqpid,WaitPublicData)
+    p = multiprocessing.Process(target = PollingDevice_Lib.sendPolling, args = (wait2Polling,))
+    p.start()
     return jsonify({"Result":"OK"})
 
-
+def Eth_init():
+    os.system('sudo ifmetric eth0 300')
+    os.system('sudo ifmetric wlan0 300')
 
 
 if __name__ == '__main__':
-	app.run(debug=True,host='0.0.0.0')
+    Eth_init()
+    app.run(debug=True,host='0.0.0.0')
