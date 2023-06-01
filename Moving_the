@@ -22,18 +22,19 @@ key_y2 = 670
 # key_x2 = 1600
 # key_y2 = 500
 
+CutY = True
 
 thold = 3 ##體積小於多少pass
 diffthold = 10 ##灰階差異大於多少才顯現0~255,越小越靈敏
-MP4 = False ##True,False  直接轉成影片檔
+MP4 = True ##True,False  直接轉成影片檔
 OneP = False ##True,False  只跑一張
 Cunt = True ##False 只保留有異常的,True 完整保留
 
 Nor_start_time = 0.0
-Nor_end_time = 2.0
+Nor_end_time = 3.0
 
 
-for videoFile in ['Particle_0516_3.avi','Particle_0516_2.avi']:
+for videoFile in ['HC_0531_Long.avi']:
     # 影片檔案
     # videoFile = "Particle01.avi"
 
@@ -45,18 +46,27 @@ for videoFile in ['Particle_0516_3.avi','Particle_0516_2.avi']:
     end_frame = int(Nor_end_time*fps)
     cap.set(cv2.CAP_PROP_POS_FRAMES,start_frame)
     
-    # 取得畫面尺寸
-    # width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-    # height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    width = key_x2 -key_x1
-    height = key_y2 - key_y1
-    # 計算畫面面積
-    area = width * height
-    
     # 初始化平均畫面
     
     ret, frame = cap.read()
-    cut_frame = frame[key_y1:key_y2,key_x1:key_x2]
+    
+    if np.mean(frame)>128:
+        IsWorB = True   ###如果要找亮的就是0
+    else:
+        IsWorB = False   ###如果要找暗的就是1
+    
+    # 取得畫面尺寸
+    if CutY:
+        width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        cut_frame = frame.copy()
+    else:
+        width = key_x2 -key_x1
+        height = key_y2 - key_y1
+        cut_frame = frame[key_y1:key_y2,key_x1:key_x2]
+    # 計算畫面面積
+    area = width * height
+    
     gray_frame = cv2.cvtColor(cut_frame, cv2.COLOR_BGR2GRAY)
     
     
@@ -80,8 +90,10 @@ for videoFile in ['Particle_0516_3.avi','Particle_0516_2.avi']:
         # 若讀取至影片結尾，則跳出
         if ret == False:
             break
-        
-        cut_frame = frame[key_y1:key_y2,key_x1:key_x2]
+        if CutY:
+            cut_frame = frame.copy()
+        else:    
+            cut_frame = frame[key_y1:key_y2,key_x1:key_x2]
         cut_frame_x,cut_frame_y,_ = cut_frame.shape
         
         gray_frame = cv2.cvtColor(cut_frame, cv2.COLOR_BGR2GRAY)
@@ -94,8 +106,21 @@ for videoFile in ['Particle_0516_3.avi','Particle_0516_2.avi']:
             
             # C = cv2.absdiff(imgUp,gray_frame)
             # ret, thresh = cv2.threshold(C, diffthold , 255, cv2.THRESH_BINARY)
-            C = imgUp+1 - gray_frame
-            ret, thresh = cv2.threshold(C, 200 , 255, cv2.THRESH_BINARY)
+            # gray_frame = 255 - gray_frame
+            
+            C1 = gray_frame * [imgLo-diffthold > gray_frame][0]
+            C2 = gray_frame * [imgUp+diffthold < gray_frame][0]
+            C = C1*C2
+            
+            # if IsWorB:
+            #     C = gray_frame * [imgLo-diffthold < gray_frame][0]
+            # else:
+            #     C = gray_frame * [imgUp+diffthold < gray_frame][0]
+            #     # C = imgUp+1 - gray_frame  ##取亮點
+            
+            
+            # ret, thresh = cv2.threshold(C, 200 , 255, cv2.THRESH_BINARY)
+            ret, thresh = cv2.threshold(C, 0 , 255, cv2.THRESH_BINARY)
             # Newframe = 255 - thresh.astype(np.uint8)
             # cv2.imwrite("%s/threshoutput_%04d.jpg" % (outputFolder, outputCounter), thresh)
      
@@ -119,7 +144,7 @@ for videoFile in ['Particle_0516_3.avi','Particle_0516_2.avi']:
             if hasMotion or not Cunt:
                 # 儲存有變動的影像
                 font = cv2.FONT_HERSHEY_SIMPLEX
-                cv2.putText(cut_frame, str(cu), (cut_frame_y-300,cut_frame_x-20), font,2, (255, 255, 255), 2, cv2.LINE_AA)
+                cv2.putText(cut_frame, str(cu), (cut_frame_y-300,cut_frame_x-20), font,2, (255, 0, 255), 2, cv2.LINE_AA)
                 cv2.putText(cut_frame, str(carx), (0,cut_frame_x-20), font,2, (0, 255, 255), 2, cv2.LINE_AA)
                 cv2.imwrite("%s/output_%04d.jpg" % (outputFolder, outputCounter), cut_frame)
                 if OneP:
