@@ -1,0 +1,84 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Mar 29 13:49:44 2023
+
+@author: JohnnyCCHuang
+"""
+import cv2
+import numpy as np
+
+### 2,3
+key_x1 = 0
+key_y1 = 400
+key_x2 = 1600
+key_y2 = 670
+###1
+# key_x1 = 0
+# key_y1 = 200
+# key_x2 = 1600
+# key_y2 = 500
+
+CutY = False
+
+thold = 3 ##體積小於多少pass
+diffthold = 10 ##灰階差異大於多少才顯現0~255,越小越靈敏
+MP4 = False ##True,False  直接轉成影片檔
+OneP = False ##True,False  只跑一張
+Cunt = True ##False 只保留有異常的,True 完整保留
+
+
+for videoFile in ['Particle_0602_3.avi','Particle_0602_4.avi']:
+ # 影片檔案
+    # 開啟影片檔
+    cap = cv2.VideoCapture(videoFile)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    
+    # 初始化平均畫面
+    
+    ret, frame = cap.read()
+    
+    
+    # 取得畫面尺寸
+    if CutY:
+        width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        cut_frame = frame.copy()
+    else:
+        width = key_x2 -key_x1
+        height = key_y2 - key_y1
+        cut_frame = frame[key_y1:key_y2,key_x1:key_x2]
+
+    gray_frame = cv2.cvtColor(cut_frame, cv2.COLOR_BGR2GRAY)
+    
+    try:
+        imgUp = np.load('imgUp.npy')
+        imgLo = np.load('imgLo.npy')
+    except:
+        print('Set New *.npy!!')
+        imgZeros = np.zeros(gray_frame.shape,dtype = np.uint8)
+        img256 = np.ones(gray_frame.shape,dtype = np.uint8)*256
+        imgUp = np.maximum(imgZeros, gray_frame)
+        imgLo = np.minimum(img256, gray_frame)
+        
+
+    while(cap.isOpened()):
+        # 讀取一幅影格
+        ret, frame = cap.read()
+        # 若讀取至影片結尾，則跳出
+        if ret == False:
+            break
+        if CutY:
+            cut_frame = frame.copy()
+        else:    
+            cut_frame = frame[key_y1:key_y2,key_x1:key_x2]
+        cut_frame_x,cut_frame_y,_ = cut_frame.shape
+        
+        gray_frame = cv2.cvtColor(cut_frame, cv2.COLOR_BGR2GRAY)
+        
+        imgUp = np.maximum(imgUp, gray_frame)
+        imgLo = np.minimum(imgLo, gray_frame)
+        
+    np.save('imgUp.npy', imgUp)
+    np.save('imgLo.npy', imgLo)
+
+    cap.release()
