@@ -1,6 +1,6 @@
 #include "HX711.h"
 #include <LiquidCrystal_PCF8574.h>
-
+//system("\"C:\\Documents and Settings\\user\\Application Data\\Microsoft\\Internet Explorer\\Quick Launch\\Show Desktop.scf\"");
 LiquidCrystal_PCF8574 lcd(0x27);  // 設定i2c位址，一般情況就是0x27和0x3F兩種
 
 // 接線
