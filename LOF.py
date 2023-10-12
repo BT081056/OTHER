@@ -1,7 +1,4 @@
 '''
-https://drive.google.com/file/d/1D736YPGR_7OqeOxSxALXBrKWIdNp_ioK/view?usp=drive_link
-https://drive.google.com/file/d/1zGke6nDE3KhIxoVpiZGtGsct1m0LyKDW/view?usp=drive_link
-
 https://www.cnblogs.com/wj-1314/p/14049195.html
 '''
 
