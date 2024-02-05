@@ -1,0 +1,307 @@
+import sys
+import time
+import glob
+import cv2
+from tflite_support.task import core
+from tflite_support.task import processor
+from tflite_support.task import vision
+import utils
+import os
+import numpy as np
+from matplotlib import pyplot as plt
+
+def check_thetaAC2(center,total_side):
+    Ans = None
+    Trans = {}
+    try:
+        a = total_side['FR'][0][1]
+        for key, value in total_side.items():
+            if value != []:
+                Trans[key] = value[0]
+            else:
+                Trans[key] = []
+    except:
+        pass
+    if center == 'FR':
+        Base = Trans['FR'][1]
+        try:
+            Side = Trans['RR'][1]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = abs(Ans)
+            else:
+                Ans = -abs(Ans)
+        except:
+            Side = Trans['FR'][1]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = abs(Ans)
+            else:
+                Ans = -abs(Ans)
+    if center == 'RR':
+        Base = Trans['RR'][1]
+        try:
+            Side = Trans['FR'][1]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = abs(Ans)
+            else:
+                Ans = -abs(Ans)
+        except:
+            Side = Trans['RL'][1]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = -abs(Ans)
+            else:
+                Ans = abs(Ans)
+    if center == 'RL':
+        Base = Trans['RL'][1]
+        try:
+            Side = Trans['FL'][1]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = abs(Ans)
+            else:
+                Ans = -abs(Ans)
+        except:
+            Side = Trans['RR'][1]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = abs(Ans)
+            else:
+                Ans = -abs(Ans)
+    if center == 'FL':
+        Base = Trans['FL'][1]
+        try:
+            Side = Trans['RL'][1]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = abs(Ans)
+            else:
+                Ans = -abs(Ans)
+        except:
+            Side = Trans['FR'][1]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = -abs(Ans)
+            else:
+                Ans = abs(Ans)
+                
+                
+    print(f"judge2 base ({center}) - side : {Ans}")
+    return Ans
+
+def getIamgeKeyAxis(image_array, TopLeft):
+    axisV, axisH, _ = image_array.shape
+    x1,y1 = TopLeft
+    
+    Ax_p = x1 - (axisH//2)
+    Ay_p = (axisV//2) -y1
+
+    # KeyX1 = int(round(x1 + KeyImage_w*0.5,0))
+    # KeyY1 = int(round(y1 + KeyImage_h*0.5,0))
+    return (Ax_p,Ay_p)
+
+def Pixel2mm(DataName, KeyAxis):
+    _,X,Y = DataName.split('.')[0].split('_')
+    Ax_p,Ay_p = KeyAxis
+    p2m = 1.172
+    ### mmy
+    Ax_m = -round(Ax_p*p2m,0)
+    Ay_m = -round(Ay_p*p2m,0)
+    
+    sy = int(Y)
+    sx = int(X)
+    
+    return (sx-Ax_m,sy-Ay_m)
+
+
+def TransName(Results):
+    for ClassData in Results:
+        print(ClassData)
+        detectedClassData = ClassData
+        origin_x = int(detectedClassData.split('origin_x=')[-1].split(',')[0])
+        origin_y = int(detectedClassData.split('origin_y=')[-1].split(',')[0])
+        width = int(detectedClassData.split('width=')[-1].split(',')[0])
+        height = int(detectedClassData.split('height=')[-1].split(')')[0])
+        score = (detectedClassData.split('score=')[-1].split(',')[0])
+        layer = (detectedClassData.split('category_name=\'')[-1].split('\'')[0])
+    centoy_X = origin_x + width//2
+    centoy_Y = origin_y + height//2
+    return layer, centoy_X, centoy_Y
+
+class layerworkV3():
+    def __init__(self, LAYER, PR, model, SaveImage):
+        self.SaveImage = SaveImage
+        self.LAYER = LAYER
+        self.sx = 0
+        self.sy = 0
+        threshold = 0.6
+        ###MODEL SETTING
+        base_options = core.BaseOptions(file_name = model, use_coral = False, num_threads = 4)
+        detection_options = processor.DetectionOptions(max_results=1, score_threshold = threshold)
+        options = vision.ObjectDetectorOptions(base_options=base_options, detection_options=detection_options)
+        self.detector = vision.ObjectDetector.create_from_options(options)
+        
+    def Process(self, ImageArray, DataName, sider, save_path = ''):
+        GetTF = False
+        AnsP = (0,0)
+        input_tensor = vision.TensorImage.create_from_array(ImageArray)
+        # Run object detection estimation using the model.
+        detection_result = self.detector.detect(input_tensor)
+        detectionIntermediate = (detection_result.detections)
+        if detectionIntermediate != []:
+            Results = str(detectionIntermediate).split('Detection')[1:]
+            FindLayer, centoy_X, centoy_Y = TransName(Results)
+            
+            if self.LAYER == FindLayer:
+                GetTF = True
+                KeyAxis = getIamgeKeyAxis(ImageArray, (centoy_X, centoy_Y))
+                AnsP = Pixel2mm(DataName, KeyAxis)
+                if self.SaveImage:
+                    sider
+                    pass
+        return AnsP[0], AnsP[1], GetTF
+    
+'''
+20230906
+####getlayer_position
+輸入 : 製成別layer , 一張大圖切分四份(sider)
+輸出 : 基準座標的x,y , 可旋轉角度
+'''
+
+def getlayer_position(layer,base_side,image_dict,DataName ='99_0_0',save_path = ''):
+    
+    SaveImage = False
+    model = 'best_0117.tflite'
+    current_dir = os.path.dirname(os.path.abspath('__file__'))
+    WorkAC = layerworkV3(layer, PR, os.path.join(current_dir,model), SaveImage)
+    
+    if type(image_dict) == dict:
+        for side,image_array in image_dict.items():
+            layerinX,layerinY,TF = WorkAC.Process(image_array,DataName,side,save_path)
+            if TF:
+                image_dict[side] = [layerinX,layerinY,DataName]
+            else:
+                image_dict[side] = ['','','']
+                
+                
+                
+    try:
+        THETA = check_thetaAC2(base_side,image_dict)
+        print('-'*10,f'GOOD     Layer base {base_side} Data : ','-'*10,'\n',image_dict[base_side])
+		#### x,y,theta
+        return (image_dict[base_side][0],image_dict[base_side][1],THETA)
+    except:
+        print('-'*10,'FAILT**** Layer Data : ','-'*10)
+        print(image_dict)
+        return (None,None,None)
+'''
+20230906
+####getbase_position
+輸入 : 製成別layer , 一張大圖切分四份(sider),每份各25張
+參數 : 道別_layer, 光阻_PR, 基準位_BaseSide, 照片集_ImageDict, 儲存位置_SaveFile
+輸出 : 基準座標的x,y , 可旋轉角度
+'''
+### getbase_position
+### getbase_position
+def getbase_position(layer, PR, base_side, dic_image, save_path = ''):
+    SaveImage = False
+    model = 'best_0117.tflite'
+    current_dir = os.path.dirname(os.path.abspath('__file__'))
+    WorkAC = layerworkV3(layer, PR, os.path.join(current_dir,model), SaveImage)
+    
+    RCOL = ['RL','RR','FL','FR']
+    ANS_image = {}
+    total_side_dic = {}
+    for sider_ in dic_image:
+        result_out = []
+        for DataName, image_array in dic_image[sider_].items():
+            layerinX,layerinY,TF = WorkAC.Process(image_array,DataName,sider_,    )
+                
+            if TF:
+                _,ox,oy = DataName.split('.')[0].split('_')
+                result_out.append([layerinX,layerinY,DataName])
+                ANS_image[sider_] = image_array
+                try:
+                    RCOL.remove(sider_)
+                except:
+                    pass
+        total_side_dic[sider_] = result_out        
+### Result Image Mix start
+    for se in RCOL:
+        ANS_image[se] = np.ones(image_array.shape)*255
+    
+    if len(ANS_image) == 4:
+        left_right1 = np.concatenate((ANS_image['RL'], ANS_image['RR']),axis = 1)
+        left_right2 = np.concatenate((ANS_image['FL'], ANS_image['FR']),axis = 1)
+        ImageMix = np.vstack((left_right1,left_right2))
+        cv2.imwrite(os.path.join(save_path,'05_found_layer_work.jpg'),ImageMix)
+        
+        
+    try:
+        THETA = check_thetaAC2(base_side,total_side_dic)
+        print('*'*10,f'GOOD     Layer base {base_side} Data : ','*'*10,'\n',total_side_dic[base_side][0])
+        print(total_side_dic)
+		#### x,y,theta
+        return (total_side_dic[base_side][0][0],total_side_dic[base_side][0][1],THETA)
+    except:
+        print('*'*10,'FAILT**** Layer Data : ','*'*10)
+        print(total_side_dic)
+        return (None,None,None)
+### Result Image Mix end
+
+
+if __name__ == '__main__':
+    PR = 'T50'
+    LAYER = 'R'
+    
+    filelist = ["/home/pi/AligWrok/testdata"]
+    for file in filelist:
+        # jpglist = glob.glob(os.path.join(file,'\*\*.jpg'))
+        # jpglist = glob.glob(os.path.join(paths, '230804\G1_2023-08-01 22-58-39_B120XAN41_MHG\*\*.jpg'))
+        S4 = ['RL','RR','FL','FR']
+        Dic_s4 = {}
+        
+        for SSI in S4:
+            # jpglist = glob.glob(os.path.join(paths,f'230804\G1_2023-08-01 22-58-39_B120XAN41_MHG\{SSI}\*.jpg'))
+            jpglist = glob.glob(os.path.join(file,f'{SSI}/*.jpg'))
+            Dic_ins = {}
+            for your_image in jpglist:
+                jpgname = os.path.basename(your_image)[:-4]
+                img = cv2.imread(your_image)
+                Dic_ins[jpgname] = img.copy()
+                inds = jpgname.split('_')[0]
+            Dic_s4[SSI] = Dic_ins
+            
+        t1 = time.time()
+        timestamp = int(time.time())  # get current timestamp
+        # plt.savefig(f'av2edges_mask_{DT}{SD}_{DataName}.jpg')
+        print(f'Go Process {file}')
+        print(getbase_position(LAYER, PR,'RR',Dic_s4,file))
+        print(f'Function Use Time: {time.time()-t1} ms\n\n')
+'''
+   #run('best_0117.tflite', 0, 640, 480, 4, False)
+    # Continuously capture images from the camera and run inference
+    model = 'best_0117.tflite'
+    MODEL = layerworkV3('G', model, False)
+    DataName ='99_0_0'
+    save_path = ''
+    names = []
+    category_name = []
+    score = []
+    origin_x = []
+    origin_y = []
+    width = []
+    height = []
+    jpgList = glob.glob("/home/pi/examples/lite/examples/object_detection/raspberry_pi/validate/*.jpg")
+    jpgList = ["/home/pi/examples/lite/examples/object_detection/raspberry_pi/validate/B_46.jpg"]
+    for jpg in jpgList:
+        NewJPG = jpg.replace(".jpg","Pred.jpg")
+        NewJPG = NewJPG.replace("validate","Pred2")
+        name = os.path.basename(jpg)
+        image = cv2.imread(jpg)
+        Res = MODEL.Process(image, DataName, save_path)
+        print(Res)
+        
+        '''
