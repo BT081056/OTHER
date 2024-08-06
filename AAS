@@ -1,0 +1,589 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Feb  5 10:05:45 2024
+240711
+@author: JohnnyCCHuang
+"""
+
+import sys
+import time
+import glob
+import cv2
+# from tflite_support.task import core
+# from tflite_support.task import processor
+# from tflite_support.task import vision
+import os
+import numpy as np
+from matplotlib import pyplot as plt
+import math
+
+########       20240613 ADD        #######
+blockSize = 65
+LenSize = blockSize-20
+########       20240613 ADD        #######
+def check_thetaAC2(center,total_side):
+    # center = 'FR'
+    # total_side = {'RL': [[-437.0, 288.0, '16_-350_280']],
+    #               'RR': [[-444.0, 113.0, '13_-350_0']],
+    #               'FL': [[-653.0, 302.0, '15_-700_280']],
+    #               'FR': [[-651.0, 109.0, '14_-700_0']]}
+    JD = '??'
+    Ans = None
+    Trans = {}
+    try:
+        a = total_side[center][0][1]
+        for key, value in total_side.items():
+            if value != []:
+                Trans[key] = value[0]
+            else:
+                Trans[key] = []
+    except:
+        pass
+    if center == 'FR':
+        try:
+            JD = 'judge1'
+            Base = Trans['FR'][0]
+            Side = Trans['RR'][0]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = -abs(Ans)
+            else:
+                Ans = abs(Ans)
+        except:
+            JD = 'judge2'
+            Base = Trans['FR'][1]
+            Side = Trans['FL'][1]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = -abs(Ans)
+            else:
+                Ans = abs(Ans)
+    if center == 'RR':
+        try:
+            JD = 'judge1'
+            Base = Trans['RR'][0]
+            Side = Trans['FR'][0]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = abs(Ans)
+            else:
+                Ans = -abs(Ans)
+        except:
+            JD = 'judge2'
+            Base = Trans['RR'][1]
+            Side = Trans['RL'][1]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = -abs(Ans)
+            else:
+                Ans = abs(Ans)
+    if center == 'RL':
+        try:
+            JD = 'judge1'
+            Base = Trans['RL'][0]
+            Side = Trans['FL'][0]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = abs(Ans)
+            else:
+                Ans = -abs(Ans)
+        except:
+            JD = 'judge2'
+            Base = Trans['RL'][1]
+            Side = Trans['RR'][1]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = abs(Ans)
+            else:
+                Ans = -abs(Ans)
+    if center == 'FL':
+        try:
+            JD = 'judge1'
+            Base = Trans['FL'][0]
+            Side = Trans['RL'][0]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = -abs(Ans)
+            else:
+                Ans = abs(Ans)
+        except:
+            JD = 'judge2'
+            Base = Trans['FL'][1]
+            Side = Trans['FR'][1]
+            Ans = Base - Side
+            if Ans>0:
+                Ans = abs(Ans)
+            else:
+                Ans = -abs(Ans)
+    print(f"{JD} base ({center}) - side : {Ans}")
+    return Ans
+
+def getIamgeKeyAxis(image_array, TopLeft):
+    axisV, axisH, _ = image_array.shape
+    x1,y1 = TopLeft
+    
+    Ax_p = x1 - (axisH//2)
+    Ay_p = (axisV//2) -y1
+
+    # KeyX1 = int(round(x1 + KeyImage_w*0.5,0))
+    # KeyY1 = int(round(y1 + KeyImage_h*0.5,0))
+    return (Ax_p,Ay_p)
+
+def Pixel2mm(DataName, KeyAxis):
+    _,X,Y = DataName.split('.')[0].split('_')
+    Ax_p,Ay_p = KeyAxis
+    p2m = 1.172
+    ### mmy
+    Ax_m = -round(Ax_p*p2m,0)
+    Ay_m = -round(Ay_p*p2m,0)
+    
+    sy = int(Y)
+    sx = int(X)
+    
+    return (sx + Ax_m, sy + Ay_m)
+
+
+def TransName(Results):
+    for ClassData in Results:
+        print(ClassData)
+        detectedClassData = ClassData
+        origin_x = int(detectedClassData.split('origin_x=')[-1].split(',')[0])
+        origin_y = int(detectedClassData.split('origin_y=')[-1].split(',')[0])
+        width = int(detectedClassData.split('width=')[-1].split(',')[0])
+        height = int(detectedClassData.split('height=')[-1].split(')')[0])
+        layer = (detectedClassData.split('category_name=\'')[-1].split('\'')[0])
+    centoy_X = origin_x + (width//2)
+    centoy_Y = origin_y + (height//2)
+    return layer, centoy_X, centoy_Y
+
+
+################################################################
+##############           getwork_focus             #############
+################################################################
+
+def Getfocal(image, blockSize = blockSize):
+    imagedropmore = image[10:-10,10:-10]
+    XX, YY = imagedropmore.shape
+    
+    ### Find cross area
+    horizontal_projection = np.sum(imagedropmore, axis=1)
+    vertical_projection = np.sum(imagedropmore, axis=0)
+    Y = np.argmax(horizontal_projection)
+    X = np.argmax(vertical_projection)
+    BlockImage = imagedropmore[Y-blockSize:Y+blockSize, X-blockSize:X+blockSize]
+    
+    if not BlockImage.shape == (blockSize*2, blockSize*2):
+        BlockImage = image[XX//2-blockSize:XX//2+blockSize, YY//2-blockSize:YY//2+blockSize]
+        
+    
+    ### Drop mine cross hole
+    #BlockImage[50:100,50:100] = 0
+
+    return BlockImage
+########       20240604 ADD        #######
+
+def GetfocalXYV2(image, blockSize = blockSize):
+    imagedropmore = image[10:-10,10:-10]
+    XX, YY = imagedropmore.shape
+    
+    ### Find cross area
+    horizontal_projection = np.sum(imagedropmore, axis=1)
+    vertical_projection = np.sum(imagedropmore, axis=0)
+    
+    Y = np.argmax(horizontal_projection)
+    X = np.argmax(vertical_projection)
+    BlockImage = imagedropmore[Y-blockSize:Y+blockSize, X-blockSize:X+blockSize]
+    if not BlockImage.shape == (blockSize*2, blockSize*2):
+        BlockImage = image[XX//2-blockSize:XX//2+blockSize, YY//2-blockSize:YY//2+blockSize]
+    return BlockImage, X, Y
+
+def GetfocalV2(image, X, Y, blockSize = blockSize):
+    imagedropmore = image[10:-10,10:-10]
+    XX, YY = imagedropmore.shape
+    BlockImage = imagedropmore[Y-blockSize:Y+blockSize, X-blockSize:X+blockSize]
+    if not BlockImage.shape == (blockSize*2, blockSize*2):
+        BlockImage = image[XX//2-blockSize:XX//2+blockSize, YY//2-blockSize:YY//2+blockSize]
+    return BlockImage
+
+########       20240604 ADD        #######
+
+def ac2(FocalImage):
+    ######   T
+    ###### L   R
+    ######   B
+    LineL = FocalImage[75,:50].astype(int)
+    LineR = FocalImage[75,-50:].astype(int)
+    LineT = FocalImage[:50,75].astype(int)
+    LineB = FocalImage[-50:,75].astype(int)
+    out = np.sum([LineL.std(), LineR.std(), LineT.std(), LineB.std()])
+    return round(out,4)
+
+########       20240613 ADD        #######
+def ac20(FocalImage):
+    LL = FocalImage[blockSize-10:blockSize+10,:LenSize].astype(int)
+    LineL  = np.sum(LL, axis=0)/20
+    RR = FocalImage[blockSize-10:blockSize+10,-LenSize:].astype(int)
+    LineR  = np.sum(RR, axis=0)/20
+    TT = FocalImage[:LenSize,blockSize-10:blockSize+10].astype(int)
+    LineT  = np.sum(TT, axis=0)/20
+    BB = FocalImage[-LenSize:,blockSize-10:blockSize+10].astype(int)
+    LineB  = np.sum(BB, axis=0)/20
+    out = np.sum([LineL.std(), LineR.std(), LineT.std(), LineB.std()])
+    return round(out,4)
+########       20240613 ADD        #######
+
+def MarkTag(image, INDEX, TEXT, TEXT2 = "", rect = False):
+    global Vn, x, y
+    n2 = (INDEX-1)//Vn
+    n1 = INDEX%Vn
+    if n1 == 0:
+        n1 = Vn
+    
+    # cv2.putText(image, TEXT, (y*(n1-1)+20, x*n2+50), cv2.FONT_HERSHEY_PLAIN,1, (255, 255, 0), 1, cv2.LINE_AA)
+    cv2.putText(image, TEXT[:3], (y*(n1-1)+45, x*n2+60), cv2.FONT_HERSHEY_PLAIN,1, (0, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(image, TEXT[3:], (y*(n1-1)+40, x*n2+75), cv2.FONT_HERSHEY_PLAIN,1, (0, 255, 255), 1, cv2.LINE_AA)
+    if rect:
+        cv2.putText(image, TEXT2, (y*(n1-1), x*n2-5), cv2.FONT_HERSHEY_PLAIN,1, (0, 255, 255), 1, cv2.LINE_AA)
+        cv2.rectangle(image,(y*(n1-1), x*n2),(y*(n1), x*(n2+1)),(200,200,200),3)
+        
+
+########       20240624 change   offset     #######
+def findBest3(temps1, temps2):
+    global Offset
+    ac = ''
+    temp = []
+    if np.std(temps1) > np.std(temps2):
+        Step2Data = temps1
+        temp = temps1
+        Offset = 11
+        sorted_data = sorted(enumerate(Step2Data), key=lambda x: x[1], reverse=True)  # big > s
+        top2 = sorted_data[:2]  # get top2 value & index
+        Value1 = Step2Data[top2[0][0]]
+        Value2 = Step2Data[top2[1][0]]
+        # OFsetValue1 = Step2Data[top2[0][0]-Offset]
+        # OFsetValue2 = Step2Data[top2[1][0]-Offset]
+        if Value1 - Value2 < 0.3:
+            Result = (top2[0][0] + top2[1][0])//2+1
+        else:
+            Result = top2[0][0]
+        ac = 'C5A'
+        
+    else:
+        Result = np.argmin(temps2)
+        temp = temps2
+        ac = 'L5C'
+        Offset = 7
+    return Result+1, Result+1 - Offset, ac, temp
+
+def c5a_brenner(img):
+    img = img.astype(int)
+    SUM = np.sum(np.abs(img[2:,:]-img[:-2, :])**2)
+    out = SUM/(971639//65)
+    return round(out,4)
+
+
+def getwork_focus(DIC, folder_path):
+    RLresult, rl__ = __getwork_focus(DIC["RL"], os.path.join(folder_path, "Work_focus_RL.jpg"))
+    RRresult, rr__ = __getwork_focus(DIC["RR"], os.path.join(folder_path, "work_focus_RR.jpg"))
+    FLresult, fl__ = __getwork_focus(DIC["FL"], os.path.join(folder_path, "work_focus_FL.jpg"))
+    FRresult, fr__ = __getwork_focus(DIC["FR"], os.path.join(folder_path, "work_focus_FR.jpg"))
+    # print({"RL": RLresult, "RR": RRresult, "FL": FLresult, "FR": FRresult})
+    return {"RL": RLresult, "RR": RRresult, "FL": FLresult, "FR": FRresult}, "RL>>> {}, RR>>>{}, FL>>>{}, FR>>>{}".format(rl__, rr__, fl__, fr__)########       20240613change        #######
+
+def __getwork_focus(DIC, save_path = "work_focus.jpg"):
+    global Vn, x, y
+    X = -999
+    Vn = int(round(math.sqrt(DIC.keys().__len__()), 0))
+    MixImage = np.zeros((Vn,Vn), np.uint8)  #### MixImage = np.zeros((5,5), np.uint8) change
+    temps1 = []
+    temps2 = []
+    for  Num, image__ in DIC.items():
+        
+        # imgGray = Getfocal(image__)
+########       20240604 ADD    Getfocal to change     #######
+        if int(Num) == 1:
+            imgGray, X, Y = GetfocalXYV2(image__)
+        else:
+            if X == -999:
+                H, W = image__.shape
+                Y = H//2
+                X = W//2
+            imgGray = GetfocalV2(image__, X, Y)
+########       20240604 ADD    Getfocal to change     #######
+        ########    MIX IMAGE    ########
+        n2 = (int(Num)-1)//Vn
+        n1 = int(Num)%Vn
+        if n1 == 0:
+            n1 = Vn
+        if MixImage.shape == (Vn, Vn):
+            x, y = imgGray.shape
+            MixImage = np.zeros((x*Vn,y*Vn), np.uint8)
+        MixImage[x*n2: x*(n2+1), y*(n1-1): y*(n1)] = imgGray
+        ########    MIX IMAGE    ########
+        
+        ######  AC1  ######
+        ac1reslut = c5a_brenner(imgGray)
+        temps1.append(round(ac1reslut,2))
+        ######  AC2  ######
+        ac2reslut = ac2(imgGray)
+        temps2.append(round(ac2reslut,2))
+########       20240619 change        #######
+    Result, OffsetRes, AC, temp = findBest3(temps1, temps2)
+    # Result, OffsetRes, AC = findBest(temps1, temps2)
+########       20240619 change        #######
+########       20240613 ADD        #######
+    LOG = "\nResult: {},\n C5Alist= {},\n L5Clist= {}".format(AC, temps1, temps2)
+
+########       20240613 ADD   20240628 change      #######
+    
+    
+    ########    MIX IMAGE for Clear   ########
+    ColorMixImage = cv2.cvtColor(MixImage, cv2.COLOR_GRAY2BGR)
+    MarkTag(ColorMixImage, Result, "", "Clear", True)
+    MarkTag(ColorMixImage, OffsetRes, "", "Offset", True)
+    
+    ind = 0
+    for i in temp:
+        ind+=1
+        MarkTag(ColorMixImage, ind, f'{AC}{i}')
+    cv2.imwrite(save_path, ColorMixImage)
+######      20240624  Result Clear result change to Offset result    #####
+    return OffsetRes, LOG
+################################################################
+##############           getwork_focus             #############
+################################################################
+
+
+
+class layerworkV3():
+    def __init__(self, LAYER, PR, model, SaveImage):
+        self.SaveImage = SaveImage
+        self.LAYER = LAYER
+        self.sx = 0
+        self.sy = 0
+        threshold = 0.6
+        ###MODEL SETTING
+        base_options = core.BaseOptions(file_name = model, use_coral = False, num_threads = 4)
+        detection_options = processor.DetectionOptions(max_results=1, score_threshold = threshold)
+        options = vision.ObjectDetectorOptions(base_options=base_options, detection_options=detection_options)
+        self.detector = vision.ObjectDetector.create_from_options(options)
+        
+    def Process(self, ImageArray, DataName, sider, save_path = ''):
+        GetTF = False
+        AnsP = (0,0)
+        ImageArray = cv2.cvtColor(ImageArray, cv2.COLOR_GRAY2RGB)
+        input_tensor = vision.TensorImage.create_from_array(ImageArray)
+
+        # Run object detection estimation using the model.
+        detection_result = self.detector.detect(input_tensor)
+        detectionIntermediate = (detection_result.detections)
+        if detectionIntermediate != []:
+            Results = str(detectionIntermediate).split('Detection')[1:]
+            FindLayer, centoy_X, centoy_Y = TransName(Results)
+            
+            if self.LAYER == FindLayer:
+                GetTF = True
+                KeyAxis = getIamgeKeyAxis(ImageArray, (centoy_X, centoy_Y))
+                
+                #KeyAxis = ( centoy_X, centoy_Y)
+                AnsP = Pixel2mm(DataName, KeyAxis)
+                print("LayerWhere: ",(centoy_X, centoy_Y))
+                print("LeftTop 2Med: ", KeyAxis,'\n')
+                print(AnsP)
+                if self.SaveImage:
+                    sider
+                    pass
+        return AnsP[0], AnsP[1], GetTF
+    
+'''
+20230906
+####getlayer_position
+J : sOlayer , @ij|(sider)
+X : yx,y , i
+'''
+
+
+def getlayer_position(layer,base_side,image_dict,DataName ='99_0_0',save_path = ''):
+    
+    SaveImage = False
+    model = 'best_0117.tflite'
+    current_dir = os.path.dirname(os.path.abspath('__file__'))
+    WorkAC = layerworkV3(layer, "PR", os.path.join(current_dir,model), SaveImage)
+    
+    if type(image_dict) == dict:
+        for side,image_array in image_dict.items():
+            layerinX,layerinY,TF = WorkAC.Process(image_array,DataName,side,save_path)
+            if TF:
+                image_dict[side] = [[layerinX,layerinY,DataName]]
+            else:
+                image_dict[side] = []
+    # base_side = 'RR'
+    # image_dict = {'RL': [[-437.0, 288.0, '16_-350_280']],
+    #               'RR': [[-444.0, 113.0, '13_-350_0']],
+    #               'FL': [[-653.0, 302.0, '15_-700_280']],
+    #               'FR': [[-651.0, 109.0, '14_-700_0']]}
+            
+            
+            
+    try:
+        THETA = check_thetaAC2(base_side,image_dict)
+        print('*'*10,f'GOOD getlayer   Layer base {base_side} Data : ','*'*10,'\n',image_dict[base_side][0])
+        print(image_dict)
+		#### x,y,theta
+        return (image_dict[base_side][0][0],image_dict[base_side][0][1],THETA)
+    except:
+        print('*'*10,'FAILT****getlayer  Layer Data : ','*'*10)
+        print(image_dict)
+        return (None,None,None)
+'''
+20230906
+####getbase_position
+J : sOlayer , @ij|(sider),CU25i
+ : DO_layer, _PR, _BaseSide, _ImageDict, xsm_SaveFile
+X : yx,y , i
+'''
+### getbase_position
+### getbase_position
+def getbase_position(layer, PR, base_side, dic_image, save_path = ''):
+    SaveImage = False
+    model = 'best_0117.tflite'
+    current_dir = os.path.dirname(os.path.abspath('__file__'))
+    WorkAC = layerworkV3(layer, "PR", os.path.join(current_dir,model), SaveImage)
+    
+    RCOL = ['RL','RR','FL','FR']
+    ANS_image = {}
+    total_side_dic = {}
+    for sider_ in dic_image:
+        result_out = []
+        for DataName, image_array in dic_image[sider_].items():
+            layerinX,layerinY,TF = WorkAC.Process(image_array,DataName,sider_,    )
+                
+            if TF:
+                _,ox,oy = DataName.split('.')[0].split('_')
+                result_out.append([layerinX,layerinY,DataName])
+                ANS_image[sider_] = image_array
+                try:
+                    RCOL.remove(sider_)
+                except:
+                    pass
+        total_side_dic[sider_] = result_out        
+### Result Image Mix start
+    for se in RCOL:
+        ANS_image[se] = np.ones(image_array.shape)*255
+    
+    if len(ANS_image) == 4:
+        left_right1 = np.concatenate((ANS_image['RL'], ANS_image['RR']),axis = 1)
+        left_right2 = np.concatenate((ANS_image['FL'], ANS_image['FR']),axis = 1)
+        ImageMix = np.vstack((left_right1,left_right2))
+        cv2.imwrite(os.path.join(save_path,'05_found_layer_work.jpg'),ImageMix)
+        
+        
+    try:
+        THETA = check_thetaAC2(base_side,total_side_dic)
+        print('*'*10,f'GOOD     Layer base {base_side} Data : ','*'*10,'\n',total_side_dic[base_side][0])
+        print(total_side_dic)
+		#### x,y,theta
+        return (total_side_dic[base_side][0][0],total_side_dic[base_side][0][1],THETA)
+    except:
+        print('*'*10,'FAILT**** Layer Data : ','*'*10)
+        print(total_side_dic)
+        return (None,None,None)
+### Result Image Mix end
+
+
+if __name__ == '__main__':
+    pathfile = r"\\johnnycchuang\Share_Johnny\Project_python\Wayne\240614\2024-06-14 12-04-45_Work_R1\Focus"
+    pathfile = r"\\johnnycchuang\Share_Johnny\Project_python\Wayne\CUBE FOCUS\2024-06-17 18-29-19_Work_G10(NG G20 B15RHAN4F MHG)\Focus"
+    pathOne = os.path.join(pathfile, "*.jpg")
+    paths = glob.glob(pathOne)
+    
+    DIC_RL = {}
+    DIC_RR = {}
+    DIC_FR = {}
+    DIC_FL = {}
+    MIX_DIC = {}
+    Ans = ['17','18']
+    for jpgpath in paths:
+        if "work" in jpgpath:
+            break
+        Num = os.path.basename(jpgpath)[:2]
+        image = cv2.imread(jpgpath)
+        H, W, _ = image.shape
+        imgGray = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
+        DIC_RL[Num] = imgGray[:H//2, :W//2]
+        DIC_RR[Num] = imgGray[:H//2, W//2:]
+        DIC_FR[Num] = imgGray[H//2:, W//2:]
+        DIC_FL[Num] = imgGray[H//2:, :W//2]
+        # inp = DIC_RL[Num]
+        # out = cv2.inRange(inp, 90, 255)
+        # cv2.imshow(str(Num), out)
+        # cv2.imshow(str(Num)+"__", inp)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+    MIX_DIC["RL"] = DIC_RL
+    MIX_DIC["RR"] = DIC_RR
+    MIX_DIC["FR"] = DIC_FR
+    MIX_DIC["FL"] = DIC_FL
+    Result, LOG = getwork_focus(MIX_DIC, pathfile)
+    # ObjectClass(Ans, DIC_RL, r'D:\UserShare\Share_Johnny\Project_python\Wayne\CUBE FOCUS\2024-06-17 18-29-19_Work_G10(NG G20 B15RHAN4F MHG)\Grid')
+    # ObjectClass(Ans, DIC_RR, r'D:\UserShare\Share_Johnny\Project_python\Wayne\CUBE FOCUS\2024-06-17 18-29-19_Work_G10(NG G20 B15RHAN4F MHG)\Grid')
+    # ObjectClass(Ans, DIC_FR, r'D:\UserShare\Share_Johnny\Project_python\Wayne\CUBE FOCUS\2024-06-17 18-29-19_Work_G10(NG G20 B15RHAN4F MHG)\Grid')
+    # ObjectClass(Ans, DIC_FL, r'D:\UserShare\Share_Johnny\Project_python\Wayne\CUBE FOCUS\2024-06-17 18-29-19_Work_G10(NG G20 B15RHAN4F MHG)\Grid')
+    
+    print(Result, LOG)
+    
+    EE
+    
+    
+    PR = 'T50'
+    LAYER = 'R'
+    
+    filelist = ["/home/pi/AligWrok/testdata"]
+    for file in filelist:
+        # jpglist = glob.glob(os.path.join(file,'\*\*.jpg'))
+        # jpglist = glob.glob(os.path.join(paths, '230804\G1_2023-08-01 22-58-39_B120XAN41_MHG\*\*.jpg'))
+        S4 = ['RL','RR','FL','FR']
+        Dic_s4 = {}
+        
+        for SSI in S4:
+            # jpglist = glob.glob(os.path.join(paths,f'230804\G1_2023-08-01 22-58-39_B120XAN41_MHG\{SSI}\*.jpg'))
+            jpglist = glob.glob(os.path.join(file,f'{SSI}/*.jpg'))
+            Dic_ins = {}
+            for your_image in jpglist:
+                jpgname = os.path.basename(your_image)[:-4]
+                img = cv2.imread(your_image)
+                Dic_ins[jpgname] = img.copy()
+                inds = jpgname.split('_')[0]
+            Dic_s4[SSI] = Dic_ins
+            
+        t1 = time.time()
+        timestamp = int(time.time())  # get current timestamp
+        # plt.savefig(f'av2edges_mask_{DT}{SD}_{DataName}.jpg')
+        print(f'Go Process {file}')
+        print(getbase_position(LAYER, PR,'RR',Dic_s4,file))
+        print(f'Function Use Time: {time.time()-t1} ms\n\n')
+'''
+   #run('best_0117.tflite', 0, 640, 480, 4, False)
+    # Continuously capture images from the camera and run inference
+    model = 'best_0117.tflite'
+    MODEL = layerworkV3('G', model, False)
+    DataName ='99_0_0'
+    save_path = ''
+    names = []
+    category_name = []
+    score = []
+    origin_x = []
+    origin_y = []
+    width = []
+    height = []
+    jpgList = glob.glob("/home/pi/examples/lite/examples/object_detection/raspberry_pi/validate/*.jpg")
+    jpgList = ["/home/pi/examples/lite/examples/object_detection/raspberry_pi/validate/B_46.jpg"]
+    for jpg in jpgList:
+        NewJPG = jpg.replace(".jpg","Pred.jpg")
+        NewJPG = NewJPG.replace("validate","Pred2")
+        name = os.path.basename(jpg)
+        image = cv2.imread(jpg)
+        Res = MODEL.Process(image, DataName, save_path)
+        print(Res)
+        
+        '''
